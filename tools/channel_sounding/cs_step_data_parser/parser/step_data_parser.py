@@ -44,7 +44,7 @@ def parse_data_from_file(file_path):
 
     initiator_data = extract_values(sections[0].split("Initiator:")[1])
     reflector_data = extract_values(sections[1])
-    
+
     # Return the dicts
     return initiator_data, reflector_data
 
@@ -54,7 +54,7 @@ def write_step_data_to_file(step_data, filename, mode):
     json_step_data = json.dumps(step_data, indent=4)
     with open(filename, mode) as json_file:
         json_file.write(json_step_data + '\n')
-        
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Parse the raw procedure data from a log file, and save parsed data to json-file.")
@@ -71,7 +71,7 @@ if __name__ == "__main__":
         help="Path to the output json-file."
     )
     args = parser.parse_args()
-    
+
     # Start by parsing the input file. Make sure the input file has a similar format as example_log_*.txt
     print("Parsing the input file...")
     initiator_data, reflector_data = parse_data_from_file(args.input_file)

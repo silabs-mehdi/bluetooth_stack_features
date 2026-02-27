@@ -30,14 +30,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    manager = mp.Manager()
-    data_queue = manager.Queue()
+    data_queue = mp.Manager().Queue()
     
     reading_process = SerialReadProcess(args.serial_port, args.baud_rate, data_queue)
-    reading_process.start() 
-    plotter = DataPlotter(window_size=WINDOW_SIZE, refresh_period=PLOT_REFRESH_PERIOD_MS, 
+    reading_process.start()
+    plotter = DataPlotter(window_size=WINDOW_SIZE, refresh_period=PLOT_REFRESH_PERIOD_MS,
                           buffer_size=BUFFER_SIZE, data_queue=data_queue)
-    
+
     plotter.start_plot()
     reading_process.join()
-    
+
