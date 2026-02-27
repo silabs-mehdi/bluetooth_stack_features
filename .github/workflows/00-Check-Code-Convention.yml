@@ -1,95 +1,47 @@
-name: 00-Check-Code-Convention
+name: 01-CLA-Assistant
 on:
-  pull_request:
-    branches:
-      - main
-      - master
-      - "release/**"
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to test'
-        type: string
-        default: 'master'
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize, reopened]
+
+permissions:
+  actions: write
+  contents: read # this can be 'read' if the signatures are in remote repository
+  pull-requests: write
+  statuses: write
 
 jobs:
-  job1:
-    name: Check coding convention
-    runs-on: ubuntu-22.04 #uncrustify 0.64 can not be compiled on ubuntu-24.04
+  CLAAssistant:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       (github.event.comment.body == 'recheck' ||
+        contains(github.event.comment.body, 'I have read the CLA Document and I hereby sign the CLA')))
+    runs-on: ubuntu-24.04
     steps:
-    - name: Trigger
-      run: echo "Triggered by ${{github.event_name}} event"
-    - name: Check Branch Input
-      run: |
-            if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-              if [ -z "${{ github.event.inputs.branch }}" ]; then
-                echo "Branch input is required for manual trigger."
-                exit 1
-              fi
-            fi
-    - name: Checkout
-      uses: actions/checkout@v4.1.7
-      with:
-        ref: "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref }}"
-        submodules: true
-        fetch-depth: 0
-    - name: Log Current Branch and Commit
-      run: |
-          echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
-          echo "Current commit: $(git rev-parse HEAD)"
-    - name: Install commit check tools
-      run: |
-          echo "Installing pre-commit ..."
-          python3 -m pip install pre-commit
-          echo "Installing uncrustify 0.64 from source code  ..."
-          sudo apt-get install --no-install-recommends -y\
-            binutils ca-certificates git cmake make \
-            gcc g++ binutils libc6-dev
-          echo "Cloning Uncrustify repository..."
-          git clone -b uncrustify-0.64 --single-branch https://github.com/uncrustify/uncrustify.git
-          echo "Building and installing Uncrustify..."
-          mkdir ./uncrustify/build && cd ./uncrustify/build
-          cmake -D CMAKE_INSTALL_PREFIX=/usr/local -D CMAKE_BUILD_TYPE=RelWithDebInfo ../
-          sudo make -j "$(nproc)"
-          sudo make install
-          echo "Uncrustify has been installed successfully!"
-          cd ../../
-          sudo cp ./.github/coding-convention-tool/tools/uncrustify/uncrustify.cfg ./uncrustify/uncrustify.cfg
-          echo "Install clang-tidy"
-          sudo apt-get install clang-tidy
-    - name: Apply custom formatting configuration
-      run: |
-        echo "Applying custom formatting configuration..."
-        chmod +x ./.github/coding-convention-tool/project_custom_config_handler.sh
-        ./.github/coding-convention-tool/project_custom_config_handler.sh
+      - name: Create CLA Assistant Lite bot token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: SiliconLabsInternal
+          repositories: contributor-license-agreements
 
-    - name: Run test
-      run: |
-        pre-commit install --config .github/coding-convention-tool/.pre-commit-config.yaml
-        pre-commit run --config .github/coding-convention-tool/.pre-commit-config.yaml --all-files 2>&1 | tee CodingConventionTool.txt
-        git diff > code-fix.patch || echo "No changes to patch."
-        ls -lah code-fix.patch
-
-    - name: Upload Result
-      uses: actions/upload-artifact@v4.3.4
-      with:
-        name: CodingConventionResult
-        path: CodingConventionTool.txt
-        retention-days: 90
-    - name: Upload Patch
-      uses: actions/upload-artifact@v4.3.4
-      with:
-        name: code-fix.patch
-        path: code-fix.patch
-        retention-days: 90
-    - name: Check log file to set status of the job
-      run: |
-        keywords=("Failed")
-        for keyword in "${keywords[@]}"; do
-          if grep -q "$keyword" CodingConventionTool.txt; then
-            echo "Keyword '$keyword' found in the file."
-            exit 1
-          else
-            echo "Keyword '$keyword' not found in the file."
-          fi
-        done
+      - name: "CLA Assistant"
+        uses: SiliconLabsSoftware/action-cla-assistant@silabs_flavour_v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PERSONAL_ACCESS_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          path-to-signatures: "cla_signatures_db.json"
+          path-to-document: "https://github.com/SiliconLabsSoftware/agreements-and-guidelines/blob/main/contributor_license_agreement.md"
+          branch: "cla-database"
+          allowlist: silabs-*,bot*
+          # the following are the optional inputs - If the optional inputs are not given, then default values will be taken
+          remote-organization-name: "SiliconLabsInternal"
+          remote-repository-name: "contributor-license-agreements"
+          create-file-commit-message: "Created the CLA database file. CLA Assistant Lite bot created this file."
+          signed-commit-message: "$contributorName has signed the CLA in $owner/$repo#$pullRequestNo"
